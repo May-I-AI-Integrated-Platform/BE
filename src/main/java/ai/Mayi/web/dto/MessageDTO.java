@@ -33,6 +33,9 @@ public class MessageDTO {
         private MessageType messageType;
         @NotNull
         private String text;
+        @Builder.Default
+        @Schema(description = "에러 여부 (Circuit Breaker OPEN 등)")
+        private Boolean isError = false;
     }
 
     @Builder

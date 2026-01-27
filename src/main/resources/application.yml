@@ -88,3 +88,64 @@ ai:
     url:
       gpt: "https://api.openai.com/v1/chat/completions"
       claude: "https://api.anthropic.com/v1/messages"
+
+# Resilience4j Circuit Breaker 설정
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        # 슬라이딩 윈도우 타입 (COUNT_BASED: 요청 수 기반)
+        slidingWindowType: COUNT_BASED
+        # 슬라이딩 윈도우 크기 (최근 10개 요청 기준)
+        slidingWindowSize: 10
+        # Circuit OPEN 판단 기준 실패율 (50%)
+        failureRateThreshold: 50
+        # Circuit OPEN 상태 유지 시간 (10초 후 HALF_OPEN)
+        waitDurationInOpenState: 10s
+        # HALF_OPEN 상태에서 허용할 요청 수
+        permittedNumberOfCallsInHalfOpenState: 3
+        # 최소 요청 수 (이 수 이상이어야 실패율 계산)
+        minimumNumberOfCalls: 5
+        # 느린 호출 기준 시간 (15초 이상이면 느린 호출)
+        slowCallDurationThreshold: 15s
+        # 느린 호출 비율 기준 (50% 이상이면 OPEN)
+        slowCallRateThreshold: 50
+        # 자동으로 HALF_OPEN 전환 허용
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # 5xx 에러만 실패로 카운트 (4xx 인증 에러는 제외)
+        recordExceptions:
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException$InternalServerError
+          - org.springframework.web.reactive.function.client.WebClientResponseException$BadGateway
+          - org.springframework.web.reactive.function.client.WebClientResponseException$ServiceUnavailable
+          - org.springframework.web.reactive.function.client.WebClientResponseException$GatewayTimeout
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+        ignoreExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$Unauthorized
+          - org.springframework.web.reactive.function.client.WebClientResponseException$Forbidden
+    instances:
+      gptCircuitBreaker:
+        baseConfig: default
+      claudeCircuitBreaker:
+        baseConfig: default
+      deepseekCircuitBreaker:
+        baseConfig: default
+      bardCircuitBreaker:
+        baseConfig: default
+
+  # 타임아웃 설정
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 30s
+        cancelRunningFuture: true
+    instances:
+      gptCircuitBreaker:
+        baseConfig: default
+      claudeCircuitBreaker:
+        baseConfig: default
+      deepseekCircuitBreaker:
+        baseConfig: default
+      bardCircuitBreaker:
+        baseConfig: default
