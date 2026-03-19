@@ -222,7 +222,7 @@ public class MessageService {
         // Circuit Breaker로 API 호출 감싸기
         Supplier<MessageDTO.ChatResDTO> apiCall = CircuitBreaker.decorateSupplier(circuitBreaker, () -> {
             WebClient webClient = WebClient.builder().build();
-            String uri = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + key;
+            String uri = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + key;
 
             List<MessageDTO.BardContents> contentsList = new ArrayList<>();
             contentsList.add(messageConverter.toBardContents(userMessage));
