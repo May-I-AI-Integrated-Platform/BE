@@ -70,7 +70,6 @@ spring:
     user:
       name: ${SECURITY_USERNAME}
       password: ${SECURITY_PASSWORD}
-
   #jwt 설정
 jwt:
   secret: ${JWT_SECRETCODE}
@@ -149,3 +148,14 @@ resilience4j:
         baseConfig: default
       bardCircuitBreaker:
         baseConfig: default
+
+# metric test
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, metrics, health
+  prometheus:
+    metrics:
+      export:
+        enabled: true
