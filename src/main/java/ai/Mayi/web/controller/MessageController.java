@@ -19,13 +19,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Tag(name = "MessageController", description = "채팅 메세지 관련 API")
@@ -33,67 +31,53 @@ import java.util.concurrent.TimeoutException;
 @RequiredArgsConstructor
 @RequestMapping("/message")
 public class MessageController {
-    // 개별 API 응답 대기 타임아웃 (초)
-    private static final int FUTURE_TIMEOUT_SECONDS = 35;
     private final MessageService messageService;
     private final UserServiceImpl userService;
     private final ChatService chatService;
 
     @PostMapping("")
     @Operation(summary = "채팅 입력 API")
-    public ApiResponse<MessageDTO.enterChatResDTO> enterChat(HttpServletRequest http, @RequestBody @Valid MessageDTO.enterChatReqDTO request) {
+    public Mono<ApiResponse<MessageDTO.enterChatResDTO>> enterChat(HttpServletRequest http, @RequestBody @Valid MessageDTO.enterChatReqDTO request) {
         String accessToken = CookieUtil.getCookieValue(http, "accessToken");
         User user = userService.findByAccessToken(accessToken);
         Chat chat = chatService.findChatById(request.getChatId());
 
-        if(chat.getUser() != user){
+        if (chat.getUser() != user) {
             throw new MessageHandler(ErrorStatus._NOT_MATCH_CHAT);
         }
-        if(request.getAiTypeList().contains(MessageType.USER)){
+        if (request.getAiTypeList().contains(MessageType.USER)) {
             throw new MessageHandler(ErrorStatus._INVALID_AI_TYPE);
         }
 
         Message userMessage = messageService.enterChat(chat, request.getText());
 
-        // AI 서비스 비동기 호출
-        List<CompletableFuture<MessageDTO.ChatResDTO>> futures = new ArrayList<>();
+        // 요청된 AI 서비스 Mono 목록 구성
+        List<Mono<MessageDTO.ChatResDTO>> monos = new ArrayList<>();
         if (request.getAiTypeList().contains(MessageType.GPT)) {
-            futures.add(messageService.GPTService(userMessage));
+            monos.add(messageService.GPTService(userMessage));
         }
         if (request.getAiTypeList().contains(MessageType.DEEPSEEK)) {
-            futures.add(messageService.DeepSeekService(userMessage));
+            monos.add(messageService.DeepSeekService(userMessage));
         }
         if (request.getAiTypeList().contains(MessageType.CLAUDE)) {
-            futures.add(messageService.ClaudeService(userMessage));
+            monos.add(messageService.ClaudeService(userMessage));
         }
         if (request.getAiTypeList().contains(MessageType.BARD)) {
-            futures.add(messageService.BardService(userMessage));
+            monos.add(messageService.BardService(userMessage));
         }
 
-        // 부분 성공 처리: 각 Future를 개별적으로 타임아웃과 예외 처리
-        List<MessageDTO.ChatResDTO> responseDTOList = new ArrayList<>();
-        for (CompletableFuture<MessageDTO.ChatResDTO> future : futures) {
-            try {
-                MessageDTO.ChatResDTO result = future.get(FUTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                if (result != null) {
-                    responseDTOList.add(result);
-                }
-            } catch (TimeoutException e) {
-                log.warn("[Controller] AI 서비스 응답 타임아웃 발생");
-            } catch (Exception e) {
-                log.error("[Controller] AI 서비스 응답 수집 중 오류: {}", e.getMessage());
-            }
-        }
+        int totalCount = monos.size();
 
-        // null 값 제거 (안전하게)
-        responseDTOList.removeIf(Objects::isNull);
-
-        log.info("[Controller] 총 {}개 AI 중 {}개 응답 성공", futures.size(), responseDTOList.size());
-
-        return ApiResponse.onSuccess(MessageDTO.enterChatResDTO.builder()
-                .chatId(chat.getChatId())
-                .responseDTOList(responseDTOList)
-                .build());
+        // 모든 AI를 병렬로 실행, 각각 실패해도 나머지 결과 수집
+        return Flux.merge(monos)
+                .collectList()
+                .doOnNext(list -> log.info("[Controller] 총 {}개 AI 중 {}개 응답 성공", totalCount, list.size()))
+                .map(responseDTOList -> ApiResponse.onSuccess(
+                        MessageDTO.enterChatResDTO.builder()
+                                .chatId(chat.getChatId())
+                                .responseDTOList(responseDTOList)
+                                .build()
+                ));
     }
 
     @GetMapping("/{chatId}")
