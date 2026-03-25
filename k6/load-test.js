@@ -21,9 +21,9 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '30s', target: 30 },   // 0→10 VU
-        { duration: '1m', target: 100 },   // 10→30 VU
-        { duration: '30s', target: 0 },    // 30→0 VU (쿨다운)
+        { duration: '1m', target: 50 },
+        { duration: '3m', target: 200 },
+        { duration: '1m', target: 0 },
       ],
       gracefulRampDown: '10s',
     },
@@ -34,6 +34,7 @@ export const options = {
     // 에러율 5% 미만
     http_req_failed: ['rate<0.05'],
   },
+  summaryTrendStats: ['min', 'avg', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
 // ===================== 헬퍼 함수 =====================
@@ -114,12 +115,18 @@ export default function () {
 
   sleep(0.5);
 
-  // ── 4. 메시지 전송 (GPT + CLAUDE 동시 요청) ──────────
+  // ── 4. 메시지 전송
+  // GPT: 100 VU까지 정상 확인 → 200 VU 중 1/2 비율(~100 VU)만 호출
+  // Claude Tier1 기준 50 RPM, VU당 ~10 req/min → 안전 동시 VU: 5개 → 200 VU 중 1/40
+  const aiTypeList = [
+    ...(__VU % 2 === 0 ? ['GPT'] : []),
+    ...(__VU % 5 === 0 ? ['CLAUDE'] : []),
+  ];
   const sendMsgRes = http.post(
     `${BASE_URL}/message`,
     JSON.stringify({
       chatId: chatId,
-      aiTypeList: ['GPT', 'CLAUDE'],
+      aiTypeList: aiTypeList,
       text: 'k6 부하테스트 메시지입니다. 간단히 답해주세요.',
     }),
     // AI 외부 호출이 있으므로 타임아웃 넉넉히 설정

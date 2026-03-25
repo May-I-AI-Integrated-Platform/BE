@@ -47,6 +47,7 @@ dependencies {
 
 	//WebClient
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    runtimeOnly 'io.netty:netty-resolver-dns-native-macos:4.1.94.Final:osx-aarch_64'
 
 	//oauth2
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
@@ -59,6 +60,10 @@ dependencies {
     //metric test
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    //cache
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'com.github.ben-manes.caffeine:caffeine'
 }
 tasks.named('test') {
 	useJUnitPlatform()

@@ -59,11 +59,10 @@ public class MessageService {
         return messageRepository.save(message);
     }
 
-    public Mono<MessageDTO.ChatResDTO> GPTService(Message userMessage) {
+    public Mono<MessageDTO.ChatResDTO> GPTService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("gptCircuitBreaker");
 
         User user = userMessage.getChat().getUser();
-        Token token = tokenRepository.findByUserAndTokenType(user, TokenType.GPT);
 
         if (token == null) {
             log.warn("[GPT] 사용자 토큰이 없습니다. userId={}", user.getUserId());
@@ -103,18 +102,14 @@ public class MessageService {
                 });
     }
 
-    public Mono<MessageDTO.ChatResDTO> DeepSeekService(Message userMessage) {
+    public Mono<MessageDTO.ChatResDTO> DeepSeekService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("deepseekCircuitBreaker");
 
-        Token deepSeekToken = tokenRepository.findByUser(userMessage.getChat().getUser()).stream()
-                .filter(token -> token.getTokenType().toString().equals(MessageType.DEEPSEEK.toString()))
-                .findFirst().orElse(null);
-
-        if (deepSeekToken == null) {
+        if (token == null) {
             log.warn("[DeepSeek] 사용자 토큰이 없습니다.");
             return Mono.empty();
         }
-        String key = deepSeekToken.getTokenValue();
+        String key = token.getTokenValue();
 
         List<MessageDTO.DeepSeekMessage> messageList = new ArrayList<>();
         messageList.add(MessageDTO.DeepSeekMessage.builder().role("user").content(userMessage.getText()).build());
@@ -153,18 +148,14 @@ public class MessageService {
 
 
 
-    public Mono<MessageDTO.ChatResDTO> BardService(Message userMessage) {
+    public Mono<MessageDTO.ChatResDTO> BardService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("bardCircuitBreaker");
 
-        Token bardToken = tokenRepository.findByUser(userMessage.getChat().getUser()).stream()
-                .filter(token -> token.getTokenType().toString().equals(MessageType.BARD.toString()))
-                .findFirst().orElse(null);
-
-        if (bardToken == null) {
+        if (token == null) {
             log.warn("[Bard] 사용자 토큰이 없습니다.");
             return Mono.empty();
         }
-        String key = bardToken.getTokenValue();
+        String key = token.getTokenValue();
         String uri = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + key;
 
         List<MessageDTO.BardContents> contentsList = new ArrayList<>();
@@ -198,11 +189,10 @@ public class MessageService {
     }
 
 
-    public Mono<MessageDTO.ChatResDTO> ClaudeService(Message userMessage) {
+    public Mono<MessageDTO.ChatResDTO> ClaudeService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("claudeCircuitBreaker");
 
         User user = userMessage.getChat().getUser();
-        Token token = tokenRepository.findByUserAndTokenType(user, TokenType.CLAUDE);
 
         if (token == null) {
             log.warn("[Claude] 사용자 토큰이 없습니다. userId={}", user.getUserId());

@@ -17,7 +17,6 @@ public class OAuth2RegistrationIdFilter implements Filter {
 
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         String uri = httpRequest.getRequestURI();
-        log.info("URI: {}", uri);
 
         if (uri.startsWith("/oauth2/authorization/")) {
             String registrationId = uri.substring("/oauth2/authorization/".length());

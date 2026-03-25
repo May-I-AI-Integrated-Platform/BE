@@ -108,7 +108,7 @@ public class UserServiceImpl implements UserService {
         Optional<User> userOpt = userRepository.findByUserEmail(userEmail);
         User user = userOpt.orElseThrow(() -> new UserHandler(ErrorStatus._NOT_EXIST_USER));
         //토큰 서비스 불러서 저장하기
-        TokenDTO.getTokenResDto aiToken = tokenService.getToken(user);
+        TokenDTO.getTokenResDto aiToken = tokenService.getTokenList(user);
 
         return UserDTO.UserDataResponseDTO.builder()
                 .userEmail(user.getUserEmail())

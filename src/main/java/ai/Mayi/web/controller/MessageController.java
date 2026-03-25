@@ -7,9 +7,11 @@ import ai.Mayi.domain.Chat;
 import ai.Mayi.domain.Message;
 import ai.Mayi.domain.User;
 import ai.Mayi.domain.enums.MessageType;
+import ai.Mayi.domain.enums.TokenType;
 import ai.Mayi.jwt.CookieUtil;
 import ai.Mayi.service.ChatService;
 import ai.Mayi.service.MessageService;
+import ai.Mayi.service.TokenService;
 import ai.Mayi.service.UserServiceImpl;
 import ai.Mayi.web.dto.MessageDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,6 +36,7 @@ public class MessageController {
     private final MessageService messageService;
     private final UserServiceImpl userService;
     private final ChatService chatService;
+    private final TokenService tokenService;
 
     @PostMapping("")
     @Operation(summary = "채팅 입력 API")
@@ -54,16 +57,16 @@ public class MessageController {
         // 요청된 AI 서비스 Mono 목록 구성
         List<Mono<MessageDTO.ChatResDTO>> monos = new ArrayList<>();
         if (request.getAiTypeList().contains(MessageType.GPT)) {
-            monos.add(messageService.GPTService(userMessage));
+            monos.add(messageService.GPTService(userMessage, tokenService.getToken(user, TokenType.GPT)));
         }
         if (request.getAiTypeList().contains(MessageType.DEEPSEEK)) {
-            monos.add(messageService.DeepSeekService(userMessage));
+            monos.add(messageService.DeepSeekService(userMessage, tokenService.getToken(user, TokenType.DEEPSEEK)));
         }
         if (request.getAiTypeList().contains(MessageType.CLAUDE)) {
-            monos.add(messageService.ClaudeService(userMessage));
+            monos.add(messageService.ClaudeService(userMessage, tokenService.getToken(user, TokenType.CLAUDE)));
         }
         if (request.getAiTypeList().contains(MessageType.BARD)) {
-            monos.add(messageService.BardService(userMessage));
+            monos.add(messageService.BardService(userMessage, tokenService.getToken(user, TokenType.BARD)));
         }
 
         int totalCount = monos.size();
@@ -71,7 +74,7 @@ public class MessageController {
         // 모든 AI를 병렬로 실행, 각각 실패해도 나머지 결과 수집
         return Flux.merge(monos)
                 .collectList()
-                .doOnNext(list -> log.info("[Controller] 총 {}개 AI 중 {}개 응답 성공", totalCount, list.size()))
+                //.doOnNext(list -> log.info("[Controller] 총 {}개 AI 중 {}개 응답 성공", totalCount, list.size()))
                 .map(responseDTOList -> ApiResponse.onSuccess(
                         MessageDTO.enterChatResDTO.builder()
                                 .chatId(chat.getChatId())

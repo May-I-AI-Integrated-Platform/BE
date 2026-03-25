@@ -37,6 +37,6 @@ public class TokenController {
         String accessToken = CookieUtil.getCookieValue(http, "accessToken");
         User user = userService.findByAccessToken(accessToken);
 
-        return ApiResponse.onSuccess(tokenService.getToken(user));
+        return ApiResponse.onSuccess(tokenService.getTokenList(user));
     }
 }

@@ -11,6 +11,7 @@ import ai.Mayi.web.dto.CommonDTO;
 import ai.Mayi.web.dto.TokenDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -55,7 +56,7 @@ public class TokenService {
                 .build();
     }
 
-    public TokenDTO.getTokenResDto getToken(User user){
+    public TokenDTO.getTokenResDto getTokenList(User user){
         List<TokenDTO.tokenDto> tokenDtoList = tokenRepository.findByUser(user).stream()
                 .map(token -> TokenDTO.tokenDto.builder().
                         tokenType(token.getTokenType().toString())
@@ -67,5 +68,10 @@ public class TokenService {
                 .userId(user.getUserId())
                 .tokenList(tokenDtoList)
                 .build();
+    }
+
+    @Cacheable(value = "token", key = "#user.userId + #tokenType.name()")
+    public Token getToken(User user, TokenType tokenType){
+        return tokenRepository.findByUserAndTokenType(user, tokenType);
     }
 }
