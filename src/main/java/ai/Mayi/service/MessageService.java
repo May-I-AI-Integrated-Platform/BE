@@ -24,6 +24,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -89,6 +90,10 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.GPT).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
+                .delaySubscription(Duration.ofSeconds(1))
+                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof RuntimeException &&
+                                throwable.getMessage().contains("429")))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[GPT] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
@@ -132,6 +137,10 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.DEEPSEEK).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
+                .delaySubscription(Duration.ofSeconds(1))
+                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof RuntimeException &&
+                                throwable.getMessage().contains("429")))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[DeepSeek] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
@@ -175,6 +184,10 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.BARD).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
+                .delaySubscription(Duration.ofSeconds(1))
+                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof RuntimeException &&
+                                throwable.getMessage().contains("429")))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[Bard] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
@@ -223,6 +236,10 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.CLAUDE).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
+                .delaySubscription(Duration.ofSeconds(1))
+                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof RuntimeException &&
+                                throwable.getMessage().contains("429")))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[Claude] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
