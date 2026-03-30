@@ -15,7 +15,11 @@ import ai.Mayi.web.dto.MessageDTO;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.ratelimiter.RateLimiter;
+import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
+import io.github.resilience4j.reactor.ratelimiter.operator.RateLimiterOperator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +45,7 @@ public class MessageService {
     private final MessageConverter messageConverter;
     private final ModelMessageRepository modelMessageRepository;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
+    private final RateLimiterRegistry rateLimiterRegistry;
 
     @Value("${ai.model.gpt}") private String gptModel;
     @Value("${ai.api.url.gpt}") private String gptUrl;
@@ -62,6 +67,7 @@ public class MessageService {
 
     public Mono<MessageDTO.ChatResDTO> GPTService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("gptCircuitBreaker");
+        RateLimiter rateLimiter = rateLimiterRegistry.rateLimiter("gptRateLimiter");
 
         User user = userMessage.getChat().getUser();
 
@@ -90,11 +96,25 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.GPT).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
-                .delaySubscription(Duration.ofSeconds(1))
-                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
-                        .filter(throwable -> throwable instanceof RuntimeException &&
-                                throwable.getMessage().contains("429")))
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .maxBackoff(Duration.ofSeconds(30))
+                        .jitter(0.5)
+                        .filter(throwable -> {
+                            if (throwable instanceof WebClientResponseException.TooManyRequests ex) {
+                                String retryAfter = ex.getHeaders().getFirst("Retry-After");
+                                log.warn("[GPT] 429 수신. Retry-After={}s", retryAfter != null ? retryAfter : "없음(backoff 적용)");
+                                return true;
+                            }
+                            return false;
+                        }))
+                .transform(RateLimiterOperator.of(rateLimiter))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
+                .onErrorResume(RequestNotPermitted.class, e -> {
+                    log.warn("[GPT] Rate Limiter 초과. 요청이 너무 많습니다.");
+                    return Mono.just(MessageDTO.ChatResDTO.builder()
+                            .text("[GPT] 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+                            .messageType(MessageType.GPT).isError(true).build());
+                })
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[GPT] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
                     return Mono.just(MessageDTO.ChatResDTO.builder()
@@ -109,6 +129,7 @@ public class MessageService {
 
     public Mono<MessageDTO.ChatResDTO> DeepSeekService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("deepseekCircuitBreaker");
+        RateLimiter rateLimiter = rateLimiterRegistry.rateLimiter("deepseekRateLimiter");
 
         if (token == null) {
             log.warn("[DeepSeek] 사용자 토큰이 없습니다.");
@@ -137,11 +158,25 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.DEEPSEEK).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
-                .delaySubscription(Duration.ofSeconds(1))
-                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
-                        .filter(throwable -> throwable instanceof RuntimeException &&
-                                throwable.getMessage().contains("429")))
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .maxBackoff(Duration.ofSeconds(30))
+                        .jitter(0.5)
+                        .filter(throwable -> {
+                            if (throwable instanceof WebClientResponseException.TooManyRequests ex) {
+                                String retryAfter = ex.getHeaders().getFirst("Retry-After");
+                                log.warn("[DeepSeek] 429 수신. Retry-After={}s", retryAfter != null ? retryAfter : "없음(backoff 적용)");
+                                return true;
+                            }
+                            return false;
+                        }))
+                .transform(RateLimiterOperator.of(rateLimiter))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
+                .onErrorResume(RequestNotPermitted.class, e -> {
+                    log.warn("[DeepSeek] Rate Limiter 초과. 요청이 너무 많습니다.");
+                    return Mono.just(MessageDTO.ChatResDTO.builder()
+                            .text("[DeepSeek] 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+                            .messageType(MessageType.DEEPSEEK).isError(true).build());
+                })
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[DeepSeek] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
                     return Mono.just(MessageDTO.ChatResDTO.builder()
@@ -159,6 +194,7 @@ public class MessageService {
 
     public Mono<MessageDTO.ChatResDTO> BardService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("bardCircuitBreaker");
+        RateLimiter rateLimiter = rateLimiterRegistry.rateLimiter("bardRateLimiter");
 
         if (token == null) {
             log.warn("[Bard] 사용자 토큰이 없습니다.");
@@ -184,11 +220,25 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.BARD).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
-                .delaySubscription(Duration.ofSeconds(1))
-                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
-                        .filter(throwable -> throwable instanceof RuntimeException &&
-                                throwable.getMessage().contains("429")))
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .maxBackoff(Duration.ofSeconds(30))
+                        .jitter(0.5)
+                        .filter(throwable -> {
+                            if (throwable instanceof WebClientResponseException.TooManyRequests ex) {
+                                String retryAfter = ex.getHeaders().getFirst("Retry-After");
+                                log.warn("[Bard] 429 수신. Retry-After={}s", retryAfter != null ? retryAfter : "없음(backoff 적용)");
+                                return true;
+                            }
+                            return false;
+                        }))
+                .transform(RateLimiterOperator.of(rateLimiter))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
+                .onErrorResume(RequestNotPermitted.class, e -> {
+                    log.warn("[Bard] Rate Limiter 초과. 요청이 너무 많습니다.");
+                    return Mono.just(MessageDTO.ChatResDTO.builder()
+                            .text("[Bard] 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+                            .messageType(MessageType.BARD).isError(true).build());
+                })
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[Bard] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
                     return Mono.just(MessageDTO.ChatResDTO.builder()
@@ -204,6 +254,7 @@ public class MessageService {
 
     public Mono<MessageDTO.ChatResDTO> ClaudeService(Message userMessage, Token token) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("claudeCircuitBreaker");
+        RateLimiter rateLimiter = rateLimiterRegistry.rateLimiter("claudeRateLimiter");
 
         User user = userMessage.getChat().getUser();
 
@@ -236,11 +287,25 @@ public class MessageService {
                             .messageAt(LocalDateTime.now()).text(text).build());
                     return MessageDTO.ChatResDTO.builder().text(text).messageType(MessageType.CLAUDE).build();
                 }).subscribeOn(Schedulers.boundedElastic()))
-                .delaySubscription(Duration.ofSeconds(1))
-                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(2))
-                        .filter(throwable -> throwable instanceof RuntimeException &&
-                                throwable.getMessage().contains("429")))
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .maxBackoff(Duration.ofSeconds(30))
+                        .jitter(0.5)
+                        .filter(throwable -> {
+                            if (throwable instanceof WebClientResponseException.TooManyRequests ex) {
+                                String retryAfter = ex.getHeaders().getFirst("Retry-After");
+                                log.warn("[Claude] 429 수신. Retry-After={}s", retryAfter != null ? retryAfter : "없음(backoff 적용)");
+                                return true;
+                            }
+                            return false;
+                        }))
+                .transform(RateLimiterOperator.of(rateLimiter))
                 .transform(CircuitBreakerOperator.of(circuitBreaker))
+                .onErrorResume(RequestNotPermitted.class, e -> {
+                    log.warn("[Claude] Rate Limiter 초과. 요청이 너무 많습니다.");
+                    return Mono.just(MessageDTO.ChatResDTO.builder()
+                            .text("[Claude] 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+                            .messageType(MessageType.CLAUDE).isError(true).build());
+                })
                 .onErrorResume(CallNotPermittedException.class, e -> {
                     log.warn("[Claude] Circuit Breaker OPEN 상태. state={}", circuitBreaker.getState());
                     return Mono.just(MessageDTO.ChatResDTO.builder()

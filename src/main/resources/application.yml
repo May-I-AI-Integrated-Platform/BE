@@ -129,6 +129,7 @@ resilience4j:
         ignoreExceptions:
           - org.springframework.web.reactive.function.client.WebClientResponseException$Unauthorized
           - org.springframework.web.reactive.function.client.WebClientResponseException$Forbidden
+          - org.springframework.web.reactive.function.client.WebClientResponseException$TooManyRequests
     instances:
       gptCircuitBreaker:
         baseConfig: default
@@ -138,6 +139,32 @@ resilience4j:
         baseConfig: default
       bardCircuitBreaker:
         baseConfig: default
+
+  # Rate Limiter 설정 - AI API 한도 초과(429) 예방
+  ratelimiter:
+    configs:
+      default:
+        # 한도 초과 시 대기 최대 시간 (이 안에 처리 못 하면 에러)
+        timeoutDuration: 10s
+        # 통계 집계 주기
+        limitRefreshPeriod: 1m
+    instances:
+      gptRateLimiter:
+        baseConfig: default
+        # GPT tier-1 기준: 분당 60 RPM
+        limitForPeriod: 60
+      claudeRateLimiter:
+        baseConfig: default
+        # Claude Haiku 기준: 분당 50 RPM
+        limitForPeriod: 50
+      deepseekRateLimiter:
+        baseConfig: default
+        # DeepSeek 기준: 분당 60 RPM
+        limitForPeriod: 60
+      bardRateLimiter:
+        baseConfig: default
+        # Gemini Flash 기준: 분당 60 RPM
+        limitForPeriod: 60
 
   # 타임아웃 설정
   timelimiter:
